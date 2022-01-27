@@ -100,13 +100,13 @@ GNUNOANSI = -g -gnu99 -Wstrict-prototypes
 
 BULD_TARGET = $(PROJECT)
 
-all : test_dio_master
+all : dio_master
 
 test_dio.o: test_dio.c lcd_func.h
 	${CC} ${CC_FLAGS} ${INCLUDE_PATHS} -c test_dio.c
 
-test_dio_master: test_dio.o
-	${CC} test_dio.o -o test_dio_master
+dio_master: test_dio.o
+	${CC} test_dio.o -o dio_master
 
 clean :
-	rm -f *.o *~ *# core  test_dio_master
+	rm -f *.o *~ *# core  dio_master

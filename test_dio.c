@@ -1,3 +1,4 @@
+/*********************************************************************************************************/
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/mman.h>
@@ -25,6 +26,8 @@ static int cur_buf_size;
 static int inited;
 static int gfd;
 #define NWDIO 8
+#define NTIMES 200
+#define TRUE 1
 #define DIO_0	0
 #define DIO_1	1
 #define DIO_2	2
@@ -34,10 +37,9 @@ static int gfd;
 #define DIO_6	6
 #define DIO_7	7
 
-//static int wdio_lines[NWDIO] = {0,1,2,3,4,5,6,7};
 static int wdio_lines[NWDIO] = {DIO_0,DIO_1,DIO_2,DIO_3,DIO_4,DIO_5,DIO_6,DIO_7};
-static UCHAR data_in[10];
-static UCHAR data_out[10];
+static UCHAR data_in[NTIMES];
+static UCHAR data_out[NTIMES];
 
 #define SS 		DIO_0
 #define SCLK	DIO_1
@@ -149,7 +151,7 @@ static void lcdinit(void)
 //		setdioddr(i,0);
 
 //	setdioddr(7,1);									// set last one to output
-	setdioddr(7,0);									// set last one to input
+//	setdioddr(7,0);									// set last one to input
 	for(i = 0;i < 10;i++)
 	{
 		red_led(1);
@@ -216,7 +218,6 @@ int getdioline(int n)
 	if (n==8) return(((*portfb)>>1)&1);
 	return((*dio_addr>>n)&1);
 }
-
 
 /* setdioline(n,v) set DIO Line n to value v
  *                 return v, or -1 on error.
@@ -329,71 +330,89 @@ void close_dio(void)
 	close(dio_fd);
 }
 #ifdef MASTER
-void init_master(void)
+/*********************************************************************************************************/
+static void init_master(void)
 {
 	int i,j;
 	printf("\nrunning as master\n\n");
 	setdioddr(SS,1);
-	mydelay(1);
+	mydelay(2);
+//	setdioline(SS,1);	// SS is active low
+	SETSS();
+	mydelay(2);
+
 	setdioddr(SCLK,1);
-	mydelay(1);
+	mydelay(2);
+//	setdioline(SCLK,1);	// SCLK is active low
+	SETSCLK();
+	mydelay(2);
+
 	setdioddr(MOSI,1);
 	mydelay(1);
 	setdioddr(MISO,0);
 	mydelay(1);
-	setdioline(SS,1);	// SS is active low
-	mydelay(1);
-	setdioline(SCLK,1);	// SCLK is active low
-	mydelay(1);
-	for(i = 0;i < 10;i++)
+
+	for(i = 0;i < NTIMES;i++)
 	{
-		data_out[i] = i+2;
+		data_out[i] = i;
 	}
 }
-void spi_master(void)
+/*********************************************************************************************************/
+static void spi_master(void)
 {
 	int i,j;
 	UCHAR mask = 1;
 	UCHAR temp = 0;
-	UCHAR temp2 = 0;
+	UCHAR temp2 = 0x55;
 
-	for(j = 0;j < 10;j++)
+	printf("starting master...\n");
+//	for(j = 0;j < NTIMES;j++)
+	while(TRUE)
 	{
-		setdioline(SS,0);
-		mydelay(10);
+		CLRSS();
+		mydelay(5);
 		temp = 0;
-		temp2 = data_out[j];
+//		temp2 = data_out[j];
 		mask = 1;
 		
 		for(i = 0;i < 8;i++)
 		{
-			setdioline(SCLK,0);
-			mydelay(2);
+			red_led(1);
+			mydelay(10);
 			if((mask & temp2) == mask)
-				setdioline(MOSI,1);
+				SETMOSI();
 			else 
-				setdioline(MOSI,0);
+				CLRMOSI();
+			mydelay(10);
+			CLRSCLK();
+			red_led(0);
 			mydelay(10);
 			if(getdioline(MISO) == 1)
 				temp |= mask;
-			printf("%02x ",temp);		
+			green_led(1);
 			mask <<= 1;
 			mydelay(10);
-			setdioline(SCLK,1);
+			SETSCLK();
 			mydelay(10);
+			green_led(0);
 		}
-		printf("\n");
-		data_in[j] = temp;
-		setdioline(SS,1);
-		mydelay(50);
+//		data_in[j] = temp;
+		
+//		if(temp2-1 != temp)
+//			printf("%d: %d\n",temp2,temp);
+//		temp2++;
+		SETSS();
+		mydelay(15);
 	}
-	for(j = 0;j < 10;j++)
+	for(j = 0;j < NTIMES;j++)
 	{
-		printf("%d\n",data_in[j]);
+		printf("%d ",data_in[j]);
 	}
+	printf("\n");
 }
 #else 
-void init_slave(void)
+/*********************************************************************************************************/
+static void init_slave(void)
 {
 	int i,j;
 	printf("\nrunning as slave\n\n");
@@ -407,52 +426,71 @@ void init_slave(void)
 	setdioddr(MISO,1);
 	mydelay(1);
 
-	for(i = 0;i < 10;i++)
+	for(i = 0;i < NTIMES;i++)
 	{
-		data_out[i] = i + 3;
+		data_out[i] = i;
 	}
+	printf("waiting for SS to go high\n");
+	j = 0;
+	while(getdioline(SS) == 0 && j++ < 100)		// wait for SS to go high
+		mydelay(1);
+	printf("SS ready\n");	
+
+	printf("waiting for SCLK to go high\n");
+	j = 0;
+	while(getdioline(SCLK) == 0 && j++ < 100)		// wait for SCLK to go high
+		mydelay(1);
+	printf("SCLK ready\n");	
 }
-void spi_slave(void)
+/*********************************************************************************************************/
+static void spi_slave(void)
 {
 	int i,j;
 	UCHAR mask = 1;
 	UCHAR temp = 0;
 	UCHAR temp2 = 0;
 
-	for(j = 0;j < 10;j++)
+//	for(j = 0;j < NTIMES;j++)
+	while(TRUE)
 	{
-		while(getdioline(SS) == 1)		// wait for SS to go low
+		while(getdioline(SS) > 0)		// wait for SS to go low
 			mydelay(1);
 		temp = 0;
 		mask = 1;
-		temp2 = data_out[j];
+//		temp2 = data_out[j];
 		for(i = 0;i < 8;i++)
 		{
-			while(getdioline(SCLK) == 1)	// read data on falling edge of SCLK
+			red_led(1);
+			while(getdioline(SCLK) > 0)	// read data on falling edge of SCLK
 				mydelay(1);
-
 			if(getdioline(MOSI) == 1)
 				temp |= mask;
-			printf("%02x ",temp);
-			mydelay(1);
+			red_led(0);
+			mydelay(5);
+			green_led(1);
 			if((mask & temp2) == mask)
-				setdioline(MISO,1);
+				SETMISO();
 			else 
-				setdioline(MISO,0);
+				CLRMISO();
 
 			mydelay(1);
-			
 			while(getdioline(SCLK) == 0)	// wait for SCLK to go back to inactive
 				mydelay(1);
 			mask <<= 1;	
+			green_led(0);
 		}
-		printf("\n");
-		data_in[j] = temp;
+		temp2 = temp;
+//		data_in[j] = temp;
+//		if(j != temp)
+//			printf("%d: %d\n",j,temp);
 		while(getdioline(SS) == 0)		// wait for SS to go high (inactive)
 			mydelay(1);
 	}
-	for(j = 0;j < 10;j++)
-		printf("%d\n",data_in[j]);
+/*
+	for(j = 0;j < NTIMES;j++)
+		printf("%d ",data_in[j]);
+	printf("\n");
+*/
 }	
 #endif 
 /*********************************************************************************************************/
@@ -466,48 +504,116 @@ int main(void)
 	i = j = 0;
 
 	lcdinit();
-	printf("version 0.03\n");
+	printf("version 0.09\n");
+
 #ifdef MASTER 
 	init_master();
 #else 
 	init_slave();
 #endif
+
 	menu();
-	
+#if 0
+#ifdef SLAVE	// ran this test with all 5 wires hooked up (incl. gnd)
+//#ifdef MASTER		// just reverse rolls to test both inputs and outputs
+	setdioddr(SS,1);
+	mydelay(1);
+	setdioddr(SCLK,1);
+	mydelay(1);
+//	setdioline(SS,1);	// SS is active low
+	SETSS();
+	mydelay(1);
+//	setdioline(SCLK,1);	// SCLK is active low
+	SETSCLK();
+	mydelay(1);
+	setdioddr(MOSI,1);
+	mydelay(1);
+	setdioddr(MISO,1);
+	mydelay(1);
+//	setdioline(MOSI,1);	// SS is active low
+	mydelay(1);
+	setdioline(MISO,1);	// SCLK is active low
+#else
+	setdioddr(SS,0);
+	mydelay(1);
+	setdioddr(SCLK,0);
+	mydelay(1);
+	setdioddr(MOSI,0);
+	mydelay(1);
+	setdioddr(MISO,0);
+	mydelay(1);
+#endif
+#endif	
 	do
 	{
 		key = getc(stdin);
 		switch(key)
 		{
 			case 'a':
-				setdioline(wdio_lines[0],tog = ttoggle(tog));	
-				// bottom row, 1st on left (DIO_0)
+#if 0
+#ifdef SLAVE
+//#ifdef MASTER
+			mydelay(1000);
+			printf("starting test...\n");
+			for(i = 0;i < 100;i++)
+			{
+				setdioline(SCLK,0);
+				mydelay(1000);
+				setdioline(SCLK,1);
+				mydelay(1000);
+				setdioline(SS,0);
+				mydelay(1000);
+				setdioline(SS,1);
+				mydelay(1000);
+				setdioline(MOSI,0);
+				mydelay(1000);
+				setdioline(MOSI,1);
+				mydelay(1000);
+				setdioline(MISO,0);
+				mydelay(1000);
+				setdioline(MISO,1);
+				mydelay(1000);
+				printf("%d\n",i);
+			}
+#else 
+			printf("starting test...");
+			for(i = 0;i < 10000;i++)
+			{
+				while(getdioline(SCLK) == 0)
+					mydelay(1);
+				printf("a\n");	
+				while(getdioline(SCLK) > 0)
+					mydelay(1);
+				printf("b\n",i);	
+				while(getdioline(SS) == 0)
+					mydelay(1);
+				printf("c\n");	
+				while(getdioline(SS) > 0)
+					mydelay(1);
+				printf("d\n");	
+				while(getdioline(MOSI) == 0)
+					mydelay(1);
+				printf("e\n");	
+				while(getdioline(MOSI) > 0)
+					mydelay(1);
+				printf("f\n",i);	
+				while(getdioline(MISO) == 0)
+					mydelay(1);
+				printf("g\n");	
+				while(getdioline(MISO) > 0)
+					mydelay(1);
+				printf("h %d\n",i);	
+			}
+#endif
+#endif
 				break;
 			case 'b':
-				setdioline(wdio_lines[1],tog = ttoggle(tog));	
-				// bottom row, 2nd from left (DIO_1)
 				break;
 			case 'c':
-				setdioline(wdio_lines[2],tog = ttoggle(tog));
-				// bottom row, 3rd from left (DIO_2)
 				break;
 			case 'd':
-				setdioline(wdio_lines[3],tog = ttoggle(tog));
-				// bottom row, 4th from left (DOI_3)
 				break;
 			case 'e':
-				setdioline(wdio_lines[4],tog = ttoggle(tog));
-				// bottom row, 4th from right (DOI_4)
-				break;
-			case 'f':
-				setdioline(wdio_lines[5],tog = ttoggle(tog));
-				// bottom row, 3rd from right (DOI_5)
-				break;
-			case 'g':
-				setdioline(wdio_lines[6],tog = ttoggle(tog));
-				// bottom row, 2nd from right (DOI_6)
-				break;
-			case 'h':
 				// test input: reading this on scope is inverted
 				setdioline(wdio_lines[6],tog = ttoggle(tog));
 				printf("input: %d\n",tog);

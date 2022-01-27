@@ -44,7 +44,10 @@ static int setdioddr(int n,int v);
 static int getdioddr(int n);
 void close_dio(void);
 void print_mem1(void);
-
+static void init_master(void);
+static void init_slave(void);
+static void spi_master(void);
+static void spi_slave(void);
 volatile UINT *phdr;
 volatile UINT *phddr;
 volatile UINT *padr;
@@ -54,6 +57,15 @@ volatile UINT *dio_ddr;
 volatile UINT *portfb;
 volatile UINT *portfd;
 volatile UINT *portled;
+
+#define SETSS() setdioline(SS,0)
+#define CLRSS() setdioline(SS,1)
+#define SETSCLK() setdioline(SCLK,0)
+#define CLRSCLK() setdioline(SCLK,1)
+#define SETMOSI() setdioline(MOSI,0)
+#define CLRMOSI() setdioline(MOSI,1)
+#define SETMISO() setdioline(MISO,0)
+#define CLRMISO() setdioline(MISO,1)
 
 //#endif
 #endif
